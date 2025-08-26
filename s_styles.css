@@ -90,7 +90,7 @@ body {
 
 /* Кнопки */
 .btn {
-    padding: 12px 20px;
+    padding: 17px 20px;
     border: 1px solid #ffffff;
     border-radius: 4px;
     font-family: 'Montserrat', sans-serif;
@@ -133,7 +133,7 @@ body {
 }
 
 .btn-small {
-    padding: 6px 12px;
+    padding: 11px 12px;
     font-size: 12px;
 }
 
@@ -673,6 +673,72 @@ body {
 /* Ячейка с названием: разрешаем перенос и занимаем минимум */
 .table .input-title-cell {
     white-space: nowrap;
+}
+
+.table .misc-cell {
+    white-space: nowrap;
+    width:1%;
+}
+
+.table .audio-cell {
+    white-space: nowrap;
+    width:1%;
+}
+
+.table .misc2-cell {
+    white-space: nowrap;
+    width:1%;
+}
+
+.audio-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.audio-control .gt-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.audio-control .ac-gap {
+    display: inline-block;
+    width: 8px;
+}
+
+.audio-control .list-select {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 11px 12px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 12px;
+    line-height: 1;
+    color-scheme: dark;
+}
+
+.audio-control .list-select:focus {
+    outline: none;
+    border-color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Явные цвета для выпадающего списка */
+.audio-control .list-select option,
+.audio-control .list-select optgroup {
+    background-color: #1E2328;
+    color: #ffffff;
+}
+
+.vmix-tan {
+    opacity: 0.33;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    height: auto;
+    z-index: -9999;
 }
 
 .table th {

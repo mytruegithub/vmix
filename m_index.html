@@ -55,6 +55,15 @@
                         </tbody>
                     </table>
                 </div>
+                <img id="vmix-tan" class="vmix-tan" />
+                <script>
+fetch("/p_tyan")
+  .then(r => r.text())
+  .then(txt => {
+    document.getElementById("vmix-tan").src = txt.trim();
+  })
+  .catch(err => console.error("Ошибка загрузки:", err));
+</script>
             </div>
         </div>
     </main>

@@ -516,7 +516,8 @@ function getVMixInputs() {
         position: input.getAttribute('position'),
         duration: input.getAttribute('duration'),
         volume: input.getAttribute('volume'),
-        muted: input.getAttribute('muted')
+        muted: input.getAttribute('muted'),
+        audiobusses: input.getAttribute('audiobusses') || ''
     }));
 }
 
@@ -568,13 +569,80 @@ function populateInputsTable() {
             const label = (mix.title || '').slice(0, 5);
             return `<td><button class="${btnClass}" onclick="sendToMix(${mix.index}, '${inp.key}')">${label}</button></td>`;
         }).join('');
+
+        const showMisc = inp.type !== 'Colour' && inp.type !== 'GT' && inp.type !== 'Mix';
+        const isMuted = (inp.muted || 'False') === 'True';
+        const audioBtnClass = isMuted ? 'btn btn-secondary btn-small' : 'btn btn-green btn-small';
+        const qCell = showMisc
+            ? `<td style="width:1%;white-space:nowrap;"><button class="btn btn-primary btn-small" onclick="QPLAY('${inp.key}')">Q</button></td>`
+            : '<td></td>';
+        const miscButtons = showMisc
+            ? `<button class="btn btn-orange btn-small" onclick="RESTART('${inp.key}')">RESTART</button>`
+            : '';
+        const audioBusses = (inp.audiobusses || '').split(',').map(s => s.trim()).filter(Boolean);
+        const hasAudio = audioBusses.length > 0 || inp.volume != null || inp.muted != null;
+        const busNames = getAudioBusDisplayNames();
+        const busesToShow = ['M', 'A', 'B', 'C'];
+        const busButtons = busesToShow.map(bus => {
+            const isOnBus = (inp.audiobusses || '').split(',').includes(bus);
+            const cls = isOnBus ? 'btn btn-green btn-small' : 'btn btn-secondary btn-small';
+            const label = busNames[bus] || bus;
+            return `<button class="${cls}" onclick="toggleBus('${inp.key}','${bus}')">${label}</button>`;
+        }).join(' ');
+        const auLabel = '♫';
+        // Контроль списка для VideoList
+        let listControl = '';
+        if (inp.type === 'VideoList') {
+            const inputNode = xmlData.querySelector(`input[key="${inp.key}"]`);
+            const selectedIndex = inputNode?.getAttribute('selectedIndex') || '1';
+            const items = Array.from(inputNode?.querySelectorAll('list > item') || []);
+            if (items.length) {
+                const options = items.map((item, idx) => {
+                    const path = (item.textContent || '').trim();
+                    const name = path.split(/[/\\\\]/).pop();
+                    const oneBased = String(idx + 1);
+                    const sel = oneBased === String(selectedIndex) ? ' selected' : '';
+                    return `<option value="${oneBased}"${sel}>${name}</option>`;
+                }).join('');
+                listControl = ` <select class="list-select" onchange="selectListIndex('${inp.key}', this.value)">${options}</select>`;
+            }
+        }
+        // Дополнительные контролы для GT Timer (только если в названии есть Timer)
+        let gtControls = '';
+        if (inp.type === 'GT' && /Timer/i.test(inp.title || '')) {
+            const presetMinutes = [1,2,3,5,7,10,15,20,25,30,40,45,60];
+            const presetBtns = presetMinutes.map(m => `<button class="btn btn-secondary btn-small" onclick="gtSetTime('${inp.key}', ${m})">${m}</button>`).join(' ');
+            gtControls = ` <div class="gt-controls">
+                <button class="btn btn-green btn-small" onclick="gtStart('${inp.key}')">START</button>
+                <button class="btn btn-orange btn-small" onclick="gtPause('${inp.key}')">PAUSE</button>
+                <button class="btn btn-danger btn-small" onclick="gtStop('${inp.key}')">STOP</button>
+                <span class="ac-gap"></span>
+                ${presetBtns}
+            </div>`;
+        }
+        const audioControl = hasAudio || (inp.type === 'GT' && /Timer/i.test(inp.title || ''))
+            ? `<div class="audio-control">`+
+                (hasAudio ? `<button class="${audioBtnClass}" onclick="toggleAudio('${inp.key}')">${auLabel}</button> ${busButtons}${listControl}` : '')+
+                ((inp.type === 'GT' && /Timer/i.test(inp.title || '')) ? gtControls : '')+
+              `</div>`
+            : '';
+        const misc2Cell = `<td class="misc2-cell">${audioControl}</td>`;
         return `
             <tr>
                 <td style="width:1%;white-space:nowrap;">
                     <button class="${pgmBtnClass}" onclick="sendToPGM('${inp.key}')">PGM</button>
                 </td>
+                ${qCell}
                 ${mixCells}
                 <td class="input-title-cell">${truncate(inp.title || '')}</td>
+                <td class="misc-cell">${(inp.type === 'GT' && /Timer/i.test(inp.title || ''))
+                    ? (() => { const overlayNode = xmlData?.querySelector('overlays overlay[number="4"]');
+                               const activeNumOnOverlay4 = overlayNode?.textContent || '';
+                               const isActiveOnOverlay = String(activeNumOnOverlay4) === String(inp.number);
+                               const ovClass = isActiveOnOverlay ? 'btn btn-green btn-small' : 'btn btn-secondary btn-small';
+                               return `<button class="${ovClass}" onclick="toggleOverlay4('${inp.key}','${inp.number}')">OVERLAY</button><span class=\"ac-gap\"></span>`; })()
+                    : ''}${miscButtons}</td>
+                ${misc2Cell}
                 <td class="flex-spacer"></td>
             </tr>
         `;
@@ -641,6 +709,169 @@ function getVMixStatus() {
             return acc;
         }, {})
     };
+}
+
+function getAudioBusDisplayNames() {
+    const names = { M: 'Master', A: 'A', B: 'B', C: 'C', D: 'D', E: 'E', F: 'F', G: 'G' };
+    try {
+        if (!xmlData) return names;
+        const audio = xmlData.querySelector('audio');
+        if (!audio) return names;
+        const master = audio.querySelector('master');
+        const busA = audio.querySelector('busA');
+        const busB = audio.querySelector('busB');
+        const busC = audio.querySelector('busC');
+        const busD = audio.querySelector('busD');
+        const busE = audio.querySelector('busE');
+        const busF = audio.querySelector('busF');
+        const busG = audio.querySelector('busG');
+        if (master?.getAttribute('name')) names.M = master.getAttribute('name') || names.M;
+        if (busA?.getAttribute('name')) names.A = busA.getAttribute('name') || names.A;
+        if (busB?.getAttribute('name')) names.B = busB.getAttribute('name') || names.B;
+        if (busC?.getAttribute('name')) names.C = busC.getAttribute('name') || names.C;
+        if (busD?.getAttribute('name')) names.D = busD.getAttribute('name') || names.D;
+        if (busE?.getAttribute('name')) names.E = busE.getAttribute('name') || names.E;
+        if (busF?.getAttribute('name')) names.F = busF.getAttribute('name') || names.F;
+        if (busG?.getAttribute('name')) names.G = busG.getAttribute('name') || names.G;
+    } catch (e) {
+        console.warn('Не удалось получить имена аудиошин', e);
+    }
+    return names;
+}
+
+// Управление инпутом: Reset / Быстрый вывод в PGM с включением аудио и Play
+async function RESTART(inputKey) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=Restart&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => {
+            refreshXML();
+        }, 200);
+    } catch (e) {
+        console.error('Ошибка RESTART инпута:', e);
+        showNotification('Ошибка RESTART инпута', 'error');
+    }
+}
+
+async function QPLAY(inputKey) {
+    try {
+        // Restart
+        await fetch(`${VMIX_API_URL}/?Function=Restart&Input=${encodeURIComponent(inputKey)}`);
+        // Включаем аудио на инпуте
+        await fetch(`${VMIX_API_URL}/?Function=AudioOn&Input=${encodeURIComponent(inputKey)}`);
+        // Отправляем в PGM (Fade)
+        await fetch(`${VMIX_API_URL}/?Function=Fade&Input=${encodeURIComponent(inputKey)}&Mix=0&Duration=500&Index=2`);
+        // Запускаем воспроизведение
+        await fetch(`${VMIX_API_URL}/?Function=Play&Input=${encodeURIComponent(inputKey)}`);
+        // Обновляем состояние чуть позже
+        setTimeout(() => {
+            refreshXML();
+        }, 800);
+    } catch (e) {
+        console.error('Ошибка QPLAY:', e);
+        showNotification('Ошибка QPLAY', 'error');
+    }
+}
+
+async function toggleAudio(inputKey) {
+    try {
+        // Узнаем текущее состояние из xml
+        const inputs = getVMixInputs();
+        const inp = inputs.find(i => i.key === inputKey);
+        const muted = (inp?.muted || 'False') === 'True';
+        if (muted) {
+            await fetch(`${VMIX_API_URL}/?Function=AudioOn&Input=${encodeURIComponent(inputKey)}`);
+        } else {
+            await fetch(`${VMIX_API_URL}/?Function=AudioOff&Input=${encodeURIComponent(inputKey)}`);
+        }
+        setTimeout(() => {
+            refreshXML();
+        }, 200);
+    } catch (e) {
+        console.error('Ошибка переключения аудио:', e);
+        showNotification('Ошибка переключения аудио', 'error');
+    }
+}
+
+async function toggleBus(inputKey, bus) {
+    try {
+        // Читаем текущее состояние шин из XML input.audiobusses
+        const inputs = getVMixInputs();
+        const inp = inputs.find(i => i.key === inputKey);
+        const buses = (inp?.audiobusses || '').split(',').map(s => s.trim()).filter(Boolean);
+        const onBus = buses.includes(bus);
+        if (onBus) {
+            await fetch(`${VMIX_API_URL}/?Function=AudioBusOff&Input=${encodeURIComponent(inputKey)}&Value=${encodeURIComponent(bus)}`);
+        } else {
+            await fetch(`${VMIX_API_URL}/?Function=AudioBusOn&Input=${encodeURIComponent(inputKey)}&Value=${encodeURIComponent(bus)}`);
+        }
+        setTimeout(() => {
+            refreshXML();
+        }, 400);
+    } catch (e) {
+        console.error('Ошибка переключения шины:', e);
+        showNotification('Ошибка переключения шины', 'error');
+    }
+}
+
+// GT helpers
+async function gtOverlay(inputKey) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=OverlayInput1&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => refreshXML(), 200);
+    } catch (e) {
+        console.error('Ошибка GT Overlay:', e);
+    }
+}
+
+async function gtStart(inputKey) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=StartCountdown&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => refreshXML(), 200);
+    } catch (e) {
+        console.error('Ошибка GT Start:', e);
+    }
+}
+
+async function gtPause(inputKey) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=PauseCountdown&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => refreshXML(), 200);
+    } catch (e) {
+        console.error('Ошибка GT Pause:', e);
+    }
+}
+
+async function gtStop(inputKey) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=StopCountdown&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => refreshXML(), 200);
+    } catch (e) {
+        console.error('Ошибка GT Stop:', e);
+    }
+}
+
+async function gtSetTime(inputKey, minutes) {
+    try {
+        const mm = String(minutes).padStart(2, '0');
+        const value = minutes === 60 ? '59:99' : `${mm}:00`;
+        await fetch(`${VMIX_API_URL}/?Function=SetCountdown&Input=${encodeURIComponent(inputKey)}&Value=${encodeURIComponent(value)}`);
+        await fetch(`${VMIX_API_URL}/?Function=StartCountdown&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => refreshXML(), 200);
+    } catch (e) {
+        console.error('Ошибка GT SetTime:', e);
+    }
+}
+
+async function selectListIndex(inputKey, indexValue) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=SelectIndex&Value=${encodeURIComponent(indexValue)}&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => {
+            refreshXML();
+        }, 200);
+    } catch (e) {
+        console.error('Ошибка выбора элемента списка:', e);
+        showNotification('Ошибка выбора элемента списка', 'error');
+    }
 }
 
 // Fullscreen функции
@@ -851,3 +1082,7 @@ window.populateInputsTable = populateInputsTable;
 window.getCurrentXMLData = getCurrentXMLData;
 window.sendToPGM = sendToPGM;
 window.sendToMix = sendToMix;
+window.RESTART = RESTART;
+window.QPLAY = QPLAY;
+window.toggleAudio = toggleAudio;
+window.toggleOverlay4 = toggleOverlay4;
