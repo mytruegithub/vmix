@@ -209,6 +209,10 @@ function notifyXMLSubscribers() {
 
 // Обновление XML данных
 function refreshXML() {
+    // моментально оповестим текущих подписчиков, чтобы хук отработал на активном контейнере
+    if (xmlData) {
+        notifyXMLSubscribers();
+    }
     loadXMLData();
 }
 
@@ -222,6 +226,7 @@ function loadMain() {
                 container.innerHTML = html;
                 // Подписываемся на XML события
                 subscribeToXML(updateMainXMLData);
+                populateInputsTable();
             })
             .catch(error => {
                 console.error('Ошибка загрузки Main:', error);
