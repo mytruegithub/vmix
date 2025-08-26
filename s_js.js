@@ -508,6 +508,7 @@ function getVMixInputs() {
 	if (!xmlData) return [];
     const inputs = xmlData.querySelectorAll('input');
     return Array.from(inputs).map(input => ({
+        key: input.getAttribute('key'),
         number: input.getAttribute('number'),
         type: input.getAttribute('type'),
         title: input.getAttribute('title'),
@@ -531,37 +532,82 @@ function populateInputsTable() {
 
     const inputs = getVMixInputs();
     if (!inputs.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#ccc;">Нет данных</td></tr>';
+        tbody.innerHTML = '<tr><td style="text-align:center;color:#ccc;">Нет данных</td></tr>';
         return;
     }
 
-    const formatMs = (ms) => {
-        if (!ms || ms === '0') return '00:00:00';
-        const n = parseInt(ms);
-        const s = Math.floor(n / 1000);
-        const m = Math.floor(s / 60);
-        const h = Math.floor(m / 60);
-        const pad = (v) => v.toString().padStart(2, '0');
-        return `${pad(h)}:${pad(m % 60)}:${pad(s % 60)}`;
+    const status = getVMixStatus();
+    const activeNumber = status?.active;
+    const mixActives = status?.mixes || {};
+    const mixInputs = Array.from(xmlData.querySelectorAll('input[type="Mix"]'));
+    // Глобальные индексы миксов: 0 = основной (PGM), далее 1..N по порядку найденных Mix-инпутов
+    const mixDisplay = mixInputs.map((mixInput, idx) => ({
+        index: idx + 1,
+        number: mixInput.getAttribute('number'),
+        key: mixInput.getAttribute('key'),
+        title: mixInput.getAttribute('title') || ''
+    }));
+
+    const truncate = (s) => {
+        if (!s) return '';
+        return s.length > 30 ? s.slice(0, 30) + '…' : s;
     };
 
     const rows = inputs.map(inp => {
-        const statusText = inp.state === 'Running' ? 'Running' : 'Paused';
+        const isPGM = String(inp.number) === String(activeNumber);
+        const pgmBtnClass = isPGM ? 'btn btn-green btn-small' : 'btn btn-secondary btn-small';
+        const mixCells = mixDisplay.map(mix => {
+            // Скрываем кнопку в колонке, если текущий ряд — это сам микс
+            if (inp.type === 'Mix' && inp.key === mix.key) {
+                return '<td></td>';
+            }
+            // Активность в миксе: сопоставляем глобальный индекс (1..N) с тегом <mix number="index+1">
+            const mixTagNumber = String(mix.index + 1);
+            const activeInMix = String(inp.number) === String(mixActives[mixTagNumber] || '');
+            const btnClass = activeInMix ? 'btn btn-green btn-small' : 'btn btn-secondary btn-small';
+            const label = (mix.title || '').slice(0, 5);
+            return `<td><button class="${btnClass}" onclick="sendToMix(${mix.index}, '${inp.key}')">${label}</button></td>`;
+        }).join('');
         return `
             <tr>
-                <td>${inp.number}</td>
-                <td>${inp.title || ''}</td>
-                <td>${inp.type || ''}</td>
-                <td>${statusText}</td>
-                <td>${formatMs(inp.position)}</td>
-                <td>${formatMs(inp.duration)}</td>
-                <td>${inp.volume != null ? inp.volume + '%' : 'N/A'}</td>
-                <td>${inp.muted === 'True' ? 'Да' : 'Нет'}</td>
+                <td style="width:1%;white-space:nowrap;">
+                    <button class="${pgmBtnClass}" onclick="sendToPGM('${inp.key}')">PGM</button>
+                </td>
+                ${mixCells}
+                <td class="input-title-cell">${truncate(inp.title || '')}</td>
+                <td class="flex-spacer"></td>
             </tr>
         `;
     }).join('');
 
     tbody.innerHTML = rows;
+}
+
+async function sendToPGM(inputKey) {
+    try {
+        // vMix API: Fade на основной Mix (0) с длительностью 500, слой Index=2
+        await fetch(`${VMIX_API_URL}/?Function=Fade&Input=${encodeURIComponent(inputKey)}&Mix=0&Duration=500&Index=2`);
+        // ждём 600 мс и обновляем XML
+        setTimeout(() => {
+            refreshXML();
+        }, 600);
+    } catch (e) {
+        console.error('Ошибка отправки в PGM:', e);
+        showNotification('Ошибка отправки в PGM', 'error');
+    }
+}
+
+async function sendToMix(mixIndex, inputKey) {
+    try {
+        // vMix API: Fade с длительностью 500 во второй слой (Index=2) микса mixIndex
+        await fetch(`${VMIX_API_URL}/?Function=Fade&Duration=500&Input=${encodeURIComponent(inputKey)}&Index=2&Mix=${encodeURIComponent(mixIndex)}`);
+        setTimeout(() => {
+            refreshXML();
+        }, 600);
+    } catch (e) {
+        console.error('Ошибка отправки в MIX:', e);
+        showNotification('Ошибка отправки в MIX', 'error');
+    }
 }
 
 function getVMixAudio() {
@@ -587,7 +633,13 @@ function getVMixStatus() {
         external: xmlData.querySelector('vmix external')?.textContent === 'True',
         fullscreen: xmlData.querySelector('vmix fullscreen')?.textContent === 'True',
         active: xmlData.querySelector('vmix active')?.textContent,
-        preview: xmlData.querySelector('vmix preview')?.textContent
+        preview: xmlData.querySelector('vmix preview')?.textContent,
+        mixes: Array.from(xmlData.querySelectorAll('vmix > mix')).reduce((acc, mixNode) => {
+            const num = mixNode.getAttribute('number');
+            const active = mixNode.querySelector('active')?.textContent;
+            if (num) acc[num] = active;
+            return acc;
+        }, {})
     };
 }
 
@@ -797,3 +849,5 @@ window.getVMixAudio = getVMixAudio;
 window.getVMixStatus = getVMixStatus;
 window.populateInputsTable = populateInputsTable;
 window.getCurrentXMLData = getCurrentXMLData;
+window.sendToPGM = sendToPGM;
+window.sendToMix = sendToMix;

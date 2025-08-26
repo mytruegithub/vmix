@@ -311,7 +311,7 @@ body {
 
 .xml-viewer pre {
     font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     color: #ffffff;
     margin: 0;
     white-space: pre-wrap;
@@ -663,6 +663,16 @@ body {
     padding: 1rem;
     text-align: left;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Спейсер-колонка для растягивания строки и минимизации остальных колонок */
+.table .flex-spacer {
+    width: 100%;
+}
+
+/* Ячейка с названием: разрешаем перенос и занимаем минимум */
+.table .input-title-cell {
+    white-space: nowrap;
 }
 
 .table th {
