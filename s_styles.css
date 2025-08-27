@@ -103,6 +103,16 @@ body {
     background: transparent;
     color: #ffffff;
 }
+.btn-pause {
+    background: #1E2328;
+    border-color: #ffffff;
+    color: rgb(255, 140, 0);
+}
+
+.btn-pause:hover {
+    background: #242a30;
+}
+
 
 .btn-primary {
     background: rgba(255, 255, 255, 0.1);
@@ -115,21 +125,21 @@ body {
 }
 
 .btn-danger {
-    background: rgba(255, 107, 107, 0.2);
-    border-color: #ff6b6b;
-    color: #ff6b6b;
+    background: transparent;
+    border-color: #ffffff;
+    color: #ff0000;
 }
 
 .btn-orange {
-    background: rgba(255, 140, 0, 0.2);
-    border-color: rgb(255, 140, 0);
-    color: rgb(255, 140, 0);
+    background: rgb(255, 140, 0);
+    border-color: #ffffff;
+    color: #ffffff;
 }
 
 .btn-green {
-    background: rgba(0, 100, 0, 0.2);
-    border-color: rgb(0, 100, 0);
-    color: rgb(0, 100, 0);
+    background: rgb(0, 100, 0);
+    border-color: #ffffff;
+    color: #ffffff;
 }
 
 .btn-small {
@@ -142,11 +152,11 @@ body {
 }
 
 .btn-orange:hover {
-    background: rgba(255, 140, 0, 0.3);
+    background: rgba(255, 140, 0, 0.85);
 }
 
 .btn-green:hover {
-    background: rgba(0, 100, 0, 0.3);
+    background: rgba(0, 100, 0, 0.85);
 }
 
 /* Контейнер контента */
@@ -663,6 +673,12 @@ body {
     padding: 1rem;
     text-align: left;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Уменьшаем вертикальные отступы в таблице инпутов, не меняя высоту самих кнопок */
+.inputs-table th,
+.inputs-table td {
+    padding: 0.35rem 0.5rem;
 }
 
 /* Спейсер-колонка для растягивания строки и минимизации остальных колонок */

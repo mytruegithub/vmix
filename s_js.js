@@ -570,15 +570,20 @@ function populateInputsTable() {
             return `<td><button class="${btnClass}" onclick="sendToMix(${mix.index}, '${inp.key}')">${label}</button></td>`;
         }).join('');
 
-        const showMisc = inp.type !== 'Colour' && inp.type !== 'GT' && inp.type !== 'Mix';
+        const showMisc = inp.type !== 'Colour' && inp.type !== 'Mix';
         const isMuted = (inp.muted || 'False') === 'True';
         const audioBtnClass = isMuted ? 'btn btn-secondary btn-small' : 'btn btn-green btn-small';
         const qCell = showMisc
             ? `<td style="width:1%;white-space:nowrap;"><button class="btn btn-primary btn-small" onclick="QPLAY('${inp.key}')">Q</button></td>`
             : '<td></td>';
-        const miscButtons = showMisc
-            ? `<button class="btn btn-orange btn-small" onclick="RESTART('${inp.key}')">RESTART</button>`
+        const canRestart = showMisc && Number(inp.duration || 0) > 0;
+        const canLiveToggle = showMisc && (Number(inp.duration || 0) > 0 || (inp.type || '') === 'Capture');
+        const liveToggleLabel = (inp.state === 'Paused') ? '⯈' : '❙❙';
+        const handlerName = (inp.type === 'Capture') ? 'livePlayPause' : ((inp.type === 'Video' || inp.type === 'VideoList' || inp.type === 'Audio') ? 'playPause' : '');
+        const liveToggleBtn = (canLiveToggle && handlerName)
+            ? `<button class=\"btn btn-pause btn-small\" onclick=\"${handlerName}('${inp.key}')\">${liveToggleLabel}</button>`
             : '';
+        const miscButtons = `${canRestart ? `<button class=\"btn btn-orange btn-small\" onclick=\"RESTART('${inp.key}')\">RESTART</button>` : ''} ${liveToggleBtn}`.trim();
         const audioBusses = (inp.audiobusses || '').split(',').map(s => s.trim()).filter(Boolean);
         const hasAudio = audioBusses.length > 0 || inp.volume != null || inp.muted != null;
         const busNames = getAudioBusDisplayNames();
@@ -611,14 +616,27 @@ function populateInputsTable() {
         let gtControls = '';
         if (inp.type === 'GT' && /Timer/i.test(inp.title || '')) {
             const presetMinutes = [1,2,3,5,7,10,15,20,25,30,40,45,60];
-            const presetBtns = presetMinutes.map(m => `<button class="btn btn-secondary btn-small" onclick="gtSetTime('${inp.key}', ${m})">${m}</button>`).join(' ');
+            const presetBtns = presetMinutes.map(m => `<button class="btn btn-secondary btn-small" onclick="gtPresetSetTime('${inp.key}', ${m})">${m}</button>`).join(' ');
             gtControls = ` <div class="gt-controls">
-                <button class="btn btn-green btn-small" onclick="gtStart('${inp.key}')">START</button>
-                <button class="btn btn-orange btn-small" onclick="gtPause('${inp.key}')">PAUSE</button>
-                <button class="btn btn-danger btn-small" onclick="gtStop('${inp.key}')">STOP</button>
+                <button class="btn btn-pause btn-small" onclick="gtPause('${inp.key}')">⯈❙❙</button>
+                <button class="btn btn-danger btn-small" onclick="gtStop('${inp.key}')">⯀</button>
                 <span class="ac-gap"></span>
                 ${presetBtns}
             </div>`;
+        }
+        // Кнопки OVERLAY ①②③④ для всех GT
+        let overlayControls = '';
+        if (inp.type === 'GT') {
+            const labels = ['1','2','3','4'];
+            const buttons = labels.map((label, idx) => {
+                const num = String(idx + 1);
+                const overlayNode = xmlData?.querySelector(`overlays overlay[number="${num}"]`);
+                const activeNum = overlayNode?.textContent || '';
+                const isActive = String(activeNum) === String(inp.number);
+                const ovClass = isActive ? 'btn btn-green btn-small' : 'btn btn-secondary btn-small';
+                return `<button class="${ovClass}" onclick="toggleOverlay('${inp.key}', ${num})">${label}</button>`;
+            }).join(' ');
+            overlayControls = `${buttons}<span class="ac-gap"></span>`;
         }
         const audioControl = hasAudio || (inp.type === 'GT' && /Timer/i.test(inp.title || ''))
             ? `<div class="audio-control">`+
@@ -635,13 +653,7 @@ function populateInputsTable() {
                 ${qCell}
                 ${mixCells}
                 <td class="input-title-cell">${truncate(inp.title || '')}</td>
-                <td class="misc-cell">${(inp.type === 'GT' && /Timer/i.test(inp.title || ''))
-                    ? (() => { const overlayNode = xmlData?.querySelector('overlays overlay[number="4"]');
-                               const activeNumOnOverlay4 = overlayNode?.textContent || '';
-                               const isActiveOnOverlay = String(activeNumOnOverlay4) === String(inp.number);
-                               const ovClass = isActiveOnOverlay ? 'btn btn-green btn-small' : 'btn btn-secondary btn-small';
-                               return `<button class="${ovClass}" onclick="toggleOverlay4('${inp.key}','${inp.number}')">OVERLAY</button><span class=\"ac-gap\"></span>`; })()
-                    : ''}${miscButtons}</td>
+                <td class="misc-cell">${overlayControls}${miscButtons}</td>
                 ${misc2Cell}
                 <td class="flex-spacer"></td>
             </tr>
@@ -823,6 +835,32 @@ async function gtOverlay(inputKey) {
     }
 }
 
+// Тоггл оверлея: включает выбранный input в указанный OverlayX, повторный вызов — выключает
+async function toggleOverlay(inputKey, overlayNumber) {
+    try {
+        if (!overlayNumber || overlayNumber < 1 || overlayNumber > 4) overlayNumber = 1;
+        // Определим, выключаем ли мы текущий overlay (для задержки 550мс при выключении)
+        let isTurningOff = false;
+        try {
+            const inputs = getVMixInputs();
+            const inp = inputs.find(i => i.key === inputKey);
+            const currentNumber = inp?.number;
+            if (currentNumber && xmlData) {
+                const node = xmlData.querySelector(`overlays overlay[number="${overlayNumber}"]`);
+                const activeNum = node?.textContent || '';
+                isTurningOff = String(activeNum) === String(currentNumber);
+            }
+        } catch {}
+
+        // vMix: OverlayInputX — тумбл состояния для заданного инпута
+        const fn = `OverlayInput${overlayNumber}`;
+        await fetch(`${VMIX_API_URL}/?Function=${encodeURIComponent(fn)}&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => refreshXML(), isTurningOff ? 550 : 200);
+    } catch (e) {
+        console.error('Ошибка toggleOverlay:', e);
+    }
+}
+
 async function gtStart(inputKey) {
     try {
         await fetch(`${VMIX_API_URL}/?Function=StartCountdown&Input=${encodeURIComponent(inputKey)}`);
@@ -852,13 +890,50 @@ async function gtStop(inputKey) {
 
 async function gtSetTime(inputKey, minutes) {
     try {
-        const mm = String(minutes).padStart(2, '0');
-        const value = minutes === 60 ? '59:99' : `${mm}:00`;
+        // 1) Стоп
+        await fetch(`${VMIX_API_URL}/?Function=StopCountdown&Input=${encodeURIComponent(inputKey)}`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // 2) Установка значения HH:MM:SS
+        const totalSeconds = Math.max(0, Math.floor(Number(minutes) * 60));
+        const hours = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        const hh = String(hours).padStart(2, '0');
+        const mm = String(mins).padStart(2, '0');
+        const ss = String(secs).padStart(2, '0');
+        const value = `${hh}:${mm}:${ss}`;
         await fetch(`${VMIX_API_URL}/?Function=SetCountdown&Input=${encodeURIComponent(inputKey)}&Value=${encodeURIComponent(value)}`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // 3) Старт
         await fetch(`${VMIX_API_URL}/?Function=StartCountdown&Input=${encodeURIComponent(inputKey)}`);
         setTimeout(() => refreshXML(), 200);
     } catch (e) {
         console.error('Ошибка GT SetTime:', e);
+    }
+}
+
+// Пресеты времени: только Stop -> Set (без Start)
+async function gtPresetSetTime(inputKey, minutes) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=StopCountdown&Input=${encodeURIComponent(inputKey)}`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        const totalSeconds = Math.max(0, Math.floor(Number(minutes) * 60));
+        const hours = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        const hh = String(hours).padStart(2, '0');
+        const mm = String(mins).padStart(2, '0');
+        const ss = String(secs).padStart(2, '0');
+        const value = `${hh}:${mm}:${ss}`;
+        await fetch(`${VMIX_API_URL}/?Function=SetCountdown&Input=${encodeURIComponent(inputKey)}&Value=${encodeURIComponent(value)}`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        await fetch(`${VMIX_API_URL}/?Function=StartCountdown&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => refreshXML(), 200);
+    } catch (e) {
+        console.error('Ошибка GT Preset SetTime:', e);
     }
 }
 
@@ -871,6 +946,32 @@ async function selectListIndex(inputKey, indexValue) {
     } catch (e) {
         console.error('Ошибка выбора элемента списка:', e);
         showNotification('Ошибка выбора элемента списка', 'error');
+    }
+}
+
+// Тумблер LivePlayPause для инпута (⯈/❙❙)
+async function livePlayPause(inputKey) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=LivePlayPause&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => {
+            refreshXML();
+        }, 200);
+    } catch (e) {
+        console.error('Ошибка LivePlayPause:', e);
+        showNotification('Ошибка LivePlayPause', 'error');
+    }
+}
+
+// Тумблер PlayPause для медиа-инпутов (Video, VideoList, Audio)
+async function playPause(inputKey) {
+    try {
+        await fetch(`${VMIX_API_URL}/?Function=PlayPause&Input=${encodeURIComponent(inputKey)}`);
+        setTimeout(() => {
+            refreshXML();
+        }, 200);
+    } catch (e) {
+        console.error('Ошибка PlayPause:', e);
+        showNotification('Ошибка PlayPause', 'error');
     }
 }
 
@@ -1085,4 +1186,6 @@ window.sendToMix = sendToMix;
 window.RESTART = RESTART;
 window.QPLAY = QPLAY;
 window.toggleAudio = toggleAudio;
-window.toggleOverlay4 = toggleOverlay4;
+window.toggleOverlay = toggleOverlay;
+window.livePlayPause = livePlayPause;
+window.playPause = playPause;
